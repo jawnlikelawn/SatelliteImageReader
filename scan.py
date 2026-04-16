@@ -27,7 +27,7 @@ except ImportError:
 MODEL_PATH = Path(__file__).parent / "ship_model.pth"
 PATCH_SIZE = 64
 STRIDE     = 16
-NMS_RADIUS = 32
+NMS_RADIUS = 64
 BLOCK      = 2880
 
 def _parse_header(data, offset):
@@ -93,7 +93,7 @@ def nms(detections, radius=NMS_RADIUS):
             kept.append((x, y, conf))
     return kept
 
-def scan(fits_path, threshold=0.92, save_patches=False):
+def scan(fits_path, threshold=0.95, save_patches=False):
     path = Path(fits_path)
     print(f"Loading {path.name} ...")
 
@@ -140,11 +140,7 @@ def scan(fits_path, threshold=0.92, save_patches=False):
     done = 0
     for cy in ys:
         for cx in xs:
-            patch     = imgRGB.crop((cx-half, cy-half, cx+half, cy+half))
-            patch_arr = np.array(patch.convert('L'), dtype=float)
-            # only skip windows that are mostly dead/black (detector edges)
-            if (patch_arr < 5).sum() / patch_arr.size > 0.4:
-                done += 1; continue
+            patch = imgRGB.crop((cx-half, cy-half, cx+half, cy+half))
             batch_imgs.append(patch); batch_coords.append((cx, cy))
             if len(batch_imgs) >= BATCH: run_batch()
             done += 1
@@ -164,13 +160,11 @@ def scan(fits_path, threshold=0.92, save_patches=False):
             scanned_dir = Path(__file__).parent / 'SCANNED'
             scanned_dir.mkdir(exist_ok=True)
             imgRGB.save(scanned_dir / (path.stem + '.detections.png'))
-            print(f"Saved (no detections) → {scanned_dir / (path.stem + '.detections.png')}")
             return
         best = max(all_detections, key=lambda d: d[2])
         detections = [best]
         print(f"Best: x={best[0]} y={best[1]} confidence={best[2]:.1%}")
 
-    # annotate and save
     scale   = min(1.0, 1200 / max(nx, ny))
     out_img = imgRGB.resize((int(nx*scale), int(ny*scale)), Image.LANCZOS)
     draw    = ImageDraw.Draw(out_img)
@@ -203,8 +197,8 @@ def scan(fits_path, threshold=0.92, save_patches=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('fits', nargs='?', help='FITS or image file to scan (optional)')
-    parser.add_argument('--threshold', type=float, default=0.92,
-                        help='Confidence threshold (default 0.92)')
+    parser.add_argument('--threshold', type=float, default=0.95,
+                        help='Confidence threshold (default 0.95)')
     parser.add_argument('--save-patches', action='store_true', dest='save_patches',
                         help='Save detection crops to PATCHES/')
     args = parser.parse_args()
